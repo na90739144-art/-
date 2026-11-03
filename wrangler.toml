@@ -1,0 +1,11 @@
+name = "kafinet-hoshmand-api"
+main = "functions/worker.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+GROQ_MODEL = "llama-3.3-70b-versatile"
+# نشانی‌های مجاز را با کاما جدا کنید. نشانی سایت گیت‌هاب شما + نشانی برنامهٔ اندروید:
+ALLOWED_ORIGINS = "https://YOUR-USERNAME.github.io,https://appassets.androidplatform.net"
+
+# کلیدها را اینجا ننویسید. در داشبورد کلودفلر (Settings > Variables and Secrets) به‌صورت Secret بسازید:
+#   GROQ_API_KEY   و   TAVILY_API_KEY

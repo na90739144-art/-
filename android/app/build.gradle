@@ -1,0 +1,55 @@
+plugins {
+    id 'com.android.application'
+}
+
+def ksFile = System.getenv('KEYSTORE_FILE')
+
+android {
+    namespace 'ir.kafinet.hoshmand'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'ir.kafinet.hoshmand'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    signingConfigs {
+        release {
+            if (ksFile) {
+                storeFile file(ksFile)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (ksFile) { signingConfig signingConfigs.release }
+        }
+    }
+
+    // وب‌سایت پوشهٔ web در ریشهٔ مخزن، به‌عنوان assets داخل برنامه بسته‌بندی می‌شود
+    sourceSets {
+        main { assets.srcDirs = ['../../web'] }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint { abortOnError false }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.webkit:webkit:1.11.0'
+}

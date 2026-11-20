@@ -1,92 +1,135 @@
-(function(){
-  var d=document,q=function(s){return d.querySelector(s)},vis=function(e){return e&&!e.hidden};
+/**
+ * Worker کافی‌نت هوشمند (Cloudflare Workers)
+ * - جستجو فقط روی فهرست سایت‌های رسمی (OFFICIAL_DOMAINS) انجام می‌شود.
+ * - پاسخ فقط بر پایهٔ همان منابع ساخته می‌شود؛ هر لینک خارج از فهرست از متن پاسخ حذف می‌شود.
+ * - اگر عدد یا شرط در پاسخ باشد، جملهٔ «ممکن است بعضی از شرایط تغییر کرده باشد…» به انتها اضافه می‌شود.
+ * - هرگز رمز، کد پیامکی یا اطلاعات کارت نمی‌خواهد و چیزی را جای کاربر ثبت نمی‌کند.
+ *
+ * متغیرهای محرمانه (Secrets): GROQ_API_KEY ، TAVILY_API_KEY (اختیاری ولی لازم برای جستجو)
+ * متغیرهای معمولی: ALLOWED_ORIGINS (با کاما جدا شود) ، GROQ_MODEL
+ */
+const OFFICIAL_DOMAINS = ["bmi.ir", "bankmellat.ir", "bsi.ir", "banksepah.ir", "tejaratbank.ir", "bankrefah.ir", "bank-maskan.ir", "bki.ir", "bpi.ir", "sb24.ir", "parsian-bank.ir", "enbank.ir", "postbank.ir", "shahr-bank.ir", "tamin.ir", "tax.gov.ir", "sabteahval.ir", "my.gov.ir", "ikco.ir", "saipa.com", "mci.ir", "irancell.ir", "rightel.ir", "post.ir", "epolice.ir", "moi.ir", "behdasht.gov.ir", "medu.ir", "msrt.ir", "moe.gov.ir", "mrud.ir", "mfa.ir", "mefa.ir", "mimt.gov.ir", "ict.gov.ir", "mcls.gov.ir", "maj.ir", "mop.ir", "msy.gov.ir", "farhang.gov.ir", "judiciary.ir", "majlis.ir", "president.ir", "mpo.ir", "irica.gov.ir", "fda.gov.ir", "irimo.ir", "ssaa.ir", "amar.org.ir", "behzisti.ir", "emdad.ir", "hajj.ir", "cao.ir", "rai.ir", "rmto.ir", "pmo.ir", "doe.ir", "chto.ir", "tehran.ir", "ito.gov.ir", "irimc.org", "lmo.ir", "isiri.gov.ir", "ncc.gov.ir", "enamad.ir", "nic.ir", "shaparak.ir", "oghaf.ir", "irib.ir", "cbi.ir", "ba24.ir", "bank-day.ir", "sinabank.ir", "tourismbank.ir", "ghbi.ir", "ttbank.ir", "bim.ir", "edbi.ir", "karafarinbank.ir", "qmb.ir", "rqbank.ir", "blubank.com", "asanpardakht.ir", "zarinpal.com", "nobitex.ir", "wallex.ir", "tsetmc.com", "ifb.ir", "codal.ir", "seo.ir", "centinsur.ir", "biran.ir", "dana-insurance.com", "bimehmellat.ir", "pic.ir", "azki.com", "bimebazar.com", "ut.ac.ir", "sharif.edu", "aut.ac.ir", "iust.ac.ir", "sbu.ac.ir", "modares.ac.ir", "um.ac.ir", "ui.ac.ir", "shirazu.ac.ir", "tabrizu.ac.ir", "atu.ac.ir", "alzahra.ac.ir", "kntu.ac.ir", "iau.ir", "pnu.ac.ir", "uast.ac.ir", "cfu.ac.ir", "tums.ac.ir", "sbmu.ac.ir", "iums.ac.ir", "mums.ac.ir", "tbzmed.ac.ir", "sums.ac.ir", "mui.ac.ir", "guilan.ac.ir", "uok.ac.ir", "urmia.ac.ir", "umz.ac.ir", "znu.ac.ir", "uk.ac.ir", "yazd.ac.ir", "razi.ac.ir", "lu.ac.ir", "basu.ac.ir", "birjand.ac.ir", "semnan.ac.ir", "khu.ac.ir", "scu.ac.ir", "iut.ac.ir", "sutech.ac.ir", "nit.ac.ir", "shad.ir", "faradars.org", "maktabkhooneh.org", "iranpaper.ir", "civilica.com", "noormags.ir", "noorlib.ir", "magiran.com", "isc.ac", "irandoc.ac.ir", "nlai.ir", "fa.wikipedia.org", "ganjoor.net", "vajehyab.com", "ihio.gov.ir", "sejam.ir", "samanehom.ir", "adliran.ir", "sanjesh.org", "ilenc.ir", "irisl.net"];
+const DISCLAIMER = 'ممکن است بعضی از شرایط تغییر کرده باشد؛ لطفاً از سایت رسمی تأیید کنید.';
+const SENSITIVE = /رمز\s*(?:پویا|عبور|کارت|دوم)|cvv2|کد\s*پیامک|\botp\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/i;
+const NEEDS_NOTE = /[0-9۰-۹]|هزینه|مهلت|شرایط|مدارک|تومان|ریال|درصد|سقف|سن|روز|ماه/;
 
-  // حذف دکمه‌های صفحهٔ اصلی
-  ['enTalk','enWrite'].forEach(function(id){var e=d.getElementById(id);if(e)e.remove()});
-  function rmOv(){d.querySelectorAll('.ovbtn').forEach(function(e){e.remove()})}
-  rmOv();
-  var mo=new MutationObserver(rmOv);mo.observe(d.body,{childList:true,subtree:true});
-  setTimeout(function(){mo.disconnect()},15000);
+const isOfficial = (host) => { host = (host || '').toLowerCase(); return OFFICIAL_DOMAINS.some(d => host === d || host.endsWith('.' + d)); };
+const hostOf = (u) => { try { return new URL(u).hostname; } catch { return ''; } };
 
-  // ظاهر دکمه‌های بازگشت
-  var st=d.createElement('style');
-  st.textContent='.backtxt{width:auto!important;padding:0 12px;font-size:.9rem!important;font-weight:700;color:var(--gold)!important}'
-   +'.modal-back{position:absolute;top:10px;right:10px;border:0;background:transparent;color:var(--gold);font:inherit;font-size:.88rem;font-weight:700;padding:8px 10px;border-radius:12px;z-index:2}'
-   +'.chat-back{border:0;background:transparent;color:var(--gold);font:inherit;font-size:.9rem;font-weight:700;padding:8px 10px;border-radius:12px}'
-   +'.chat-back[hidden]{display:none!important}';
-  d.head.appendChild(st);
+function cors(env, origin) {
+  const allowed = (env.ALLOWED_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean);
+  const ok = !allowed.length || (origin && allowed.includes(origin));
+  return { ok, headers: {
+    'Access-Control-Allow-Origin': ok && origin ? origin : (allowed[0] || '*'),
+    'Vary': 'Origin',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff'
+  } };
+}
 
-  // یک مرحله عقب رفتن
-  window.khBack=function(){
-    var tour=q('#tourView');if(vis(tour)){var b1=q('#tSkip');if(b1)b1.click();return true}
-    var sl=q('#searchLayer');if(vis(sl)){var b2=q('#searchClose');if(b2)b2.click();return true}
-    var ml=q('#modalLayer');if(vis(ml)){var b3=q('#modalClose');if(b3)b3.click();return true}
-    var hp=q('#histPage');if(vis(hp)){hp.hidden=true;return true}
-    var sp=q('#setPage');if(vis(sp)){sp.hidden=true;return true}
-    var sb=q('#sidebar');if(sb&&sb.classList.contains('open')){var b4=q('#closeMenu');if(b4)b4.click();return true}
-    var w=q('#welcome');if(w&&w.hidden){var b5=q('#newChat');if(b5)b5.click();return true}
-    return false;
-  };
-  function mk(txt,cls){var b=d.createElement('button');b.type='button';b.className=cls;b.textContent=txt;return b}
+// محدودیت ساده برای هر IP (در حافظهٔ همان نمونه؛ برای محدودیت سخت‌تر از Rate Limiting کلودفلر استفاده کنید)
+const hits = new Map();
+function limited(ip) {
+  const now = Date.now(), arr = (hits.get(ip) || []).filter(t => now - t < 60000);
+  arr.push(now); hits.set(ip, arr);
+  if (hits.size > 5000) hits.clear();
+  return arr.length > 15;
+}
 
-  // صفحه‌های تاریخچه و تنظیمات
-  ['hBack','sBack'].forEach(function(id){var b=d.getElementById(id);if(b){b.textContent='→ بازگشت';b.classList.add('backtxt')}});
+async function searchOfficial(env, query) {
+  if (!env.TAVILY_API_KEY) return [];
+  try {
+    const r = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + env.TAVILY_API_KEY },
+      body: JSON.stringify({ query, include_domains: OFFICIAL_DOMAINS, max_results: 5, search_depth: 'basic' })
+    });
+    if (!r.ok) return [];
+    const d = await r.json();
+    return (d.results || [])
+      .filter(x => x && typeof x.url === 'string' && x.url.startsWith('https://') && isOfficial(hostOf(x.url)))
+      .slice(0, 5)
+      .map(x => ({ title: String(x.title || hostOf(x.url)).slice(0, 120), url: x.url, content: String(x.content || '').slice(0, 800) }));
+  } catch { return []; }
+}
 
-  // پنجره‌ها
-  [['#modalLayer .modal','#modalClose'],['#searchLayer .modal','#searchClose']].forEach(function(p){
-    var box=q(p[0]),cb=q(p[1]);if(!box||!cb)return;
-    var b=mk('→ بازگشت','modal-back');b.addEventListener('click',function(){cb.click()});box.prepend(b);
-  });
+function cleanAnswer(text) {
+  return text
+    .replace(/https?:\/\/[^\s)\]»"]+/g, (u) => isOfficial(hostOf(u)) ? u : '[لینک غیررسمی حذف شد]')
+    .trim();
+}
 
-  // صفحهٔ گفتگو
-  var top=q('.topbar'),title=q('.top-title'),w=q('#welcome');
-  if(top&&title){
-    var cb2=mk('→ بازگشت','chat-back');cb2.hidden=true;top.insertBefore(cb2,title);
-    cb2.addEventListener('click',function(){var n=q('#newChat');if(n)n.click()});
-    var upd=function(){cb2.hidden=!(w&&w.hidden)};
-    if(w)new MutationObserver(upd).observe(w,{attributes:true,attributeFilter:['hidden']});
-    upd();
-  }
-
-  // دکمهٔ برگشت خود گوشی
-  try{
-    history.pushState({kh:1},'');
-    window.addEventListener('popstate',function(){if(window.khBack())history.pushState({kh:1},'')});
-  }catch(e){}
-})();
-
-// تلاش دوباره + نمایش کد خطا برای عیب‌یابی
-(function(){
-  var of=window.fetch;
-  function toast(t){
-    var e=document.getElementById('khDbg');
-    if(!e){e=document.createElement('div');e.id='khDbg';
-      e.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:99999;background:#222;color:#fff;font:12px sans-serif;padding:8px 10px;border-radius:10px;direction:ltr;text-align:left';
-      document.body.appendChild(e);}
-    e.textContent=t;clearTimeout(e._t);e._t=setTimeout(function(){e.remove()},12000);
-  }
-  window.fetch=function(u,o){
-    if(typeof u==='string'&&u.indexOf('/api/chat')>-1){
-      var n=0;
-      var go=function(){
-        var c=new AbortController();
-        var t=setTimeout(function(){c.abort()},30000);
-        return of(u,Object.assign({},o,{signal:c.signal})).then(function(r){
-          clearTimeout(t);
-          if(!r.ok){
-            r.clone().json().then(function(j){toast('HTTP '+r.status+' '+((j&&j.error)||''))}).catch(function(){toast('HTTP '+r.status)});
-            if(r.status>=500&&n<2){n++;return go()}
-          }
-          return r;
-        }).catch(function(e){
-          clearTimeout(t);
-          if(n<2){n++;return go()}
-          toast('NETWORK '+((e&&e.name)||'error'));
-          throw e;
+export default {
+  async fetch(request, env) {
+    const origin = request.headers.get('Origin');
+    const c = cors(env, origin);
+    const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: c.headers });
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: c.headers });
+    const url = new URL(request.url);
+    // ---- آزمایش موقت: بعد از رفع مشکل این بخش را پاک کنید ----
+    if (url.pathname === '/api/test') {
+      if (limited(request.headers.get('CF-Connecting-IP') || 'x')) return json({ error: 'rate_limited' }, 429);
+      if (!env.GROQ_API_KEY) return json({ step: 'key', ok: false, msg: 'GROQ_API_KEY is not set' });
+      try {
+        const tr = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + env.GROQ_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: env.GROQ_MODEL || 'llama-3.3-70b-versatile', max_tokens: 20, messages: [{ role: 'user', content: 'say hi' }] })
         });
-      };
-      return go();
+        const tx = await tr.text();
+        return json({ step: 'groq', status: tr.status, body: tx.slice(0, 300) });
+      } catch (e) { return json({ step: 'fetch', error: String(e).slice(0, 200) }); }
     }
-    return of.apply(this,arguments);
-  };
-})();
+    // ---- پایان بخش آزمایشی ----
+    if (url.pathname !== '/api/chat') return json({ error: 'not_found' }, 404);
+    if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+    if (!c.ok) return json({ error: 'origin_not_allowed' }, 403);
+    if (!env.GROQ_API_KEY) return json({ error: 'service_not_configured' }, 503);
+    if (limited(request.headers.get('CF-Connecting-IP') || 'x')) return json({ error: 'rate_limited', answer: 'تعداد درخواست‌ها زیاد بود. چند لحظه بعد دوباره تلاش کنید.' }, 429);
+
+    let body; try { body = await request.json(); } catch { return json({ error: 'invalid_json' }, 400); }
+    const message = typeof body.message === 'string' ? body.message.trim() : '';
+    if (!message || message.length > 1500) return json({ error: 'message_length_invalid' }, 400);
+    if (SENSITIVE.test(message)) return json({ error: 'sensitive_information_blocked', answer: 'لطفاً رمزها، کدهای پیامکی و اطلاعات کارت را ارسال نکنید. این اطلاعات را فقط در سایت رسمی وارد کنید.' }, 400);
+    const context = typeof body.context === 'string' ? body.context.slice(0, 80) : '';
+    const history = Array.isArray(body.history) ? body.history.slice(-6)
+      .filter(h => h && (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string')
+      .map(h => ({ role: h.role, content: h.content.slice(0, 500) })) : [];
+
+    const found = await searchOfficial(env, (context ? context + ' ' : '') + message);
+    const sourcesText = found.length
+      ? found.map((s, i) => '[' + (i + 1) + '] ' + s.title + ' (' + hostOf(s.url) + ')\n' + s.content).join('\n\n')
+      : '(هیچ منبع رسمی‌ای پیدا نشد)';
+
+    const system = [
+      'تو «کافی‌نت هوشمند» هستی؛ دستیار فارسی برای راهنمایی خدمات اداری و اینترنتی ایران.',
+      'فقط از «منابع رسمی» زیر برای هر عدد، هزینه، مهلت، شرط و مدرک استفاده کن. اگر منبع آن را نگفته، صریح بگو «در منبع رسمی پیدا نکردم» و کاربر را به سایت رسمی همان سازمان بفرست؛ هرگز عدد یا شرط از خودت نساز.',
+      'هیچ لینکی جز لینک‌های همین منابع نده. نام سازمان رسمی مربوط را بگو.',
+      'هرگز رمز، رمز پویا، کد پیامکی، CVV یا شماره کارت درخواست نکن. وارد حساب کاربر نشو و چیزی را جای او ثبت نکن؛ همهٔ ورود اطلاعات را خود کاربر روی سایت رسمی انجام می‌دهد.',
+      context ? 'کاربر می‌خواهد در سایت مربوط به «' + context + '» قدم‌به‌قدم راهنمایی شود؛ مرحله‌به‌مرحله و کوتاه بگو چه بزند و چه بنویسد، و بپرس به کدام مرحله رسیده.' : '',
+      'پاسخ را به فارسی روان، کوتاه و مناسب خواندن با صدا بنویس (جمله‌های کوتاه، بدون جدول و علامت‌های اضافه).',
+      'منابع رسمی:\n' + sourcesText
+    ].filter(Boolean).join('\n');
+
+    try {
+      const up = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + env.GROQ_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: env.GROQ_MODEL || 'llama-3.3-70b-versatile', temperature: 0.2, max_tokens: 800,
+          messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: message }]
+        })
+      });
+      if (!up.ok) return json({ error: 'upstream_unavailable' }, 502);
+      const data = await up.json();
+      let answer = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      if (typeof answer !== 'string' || !answer.trim()) return json({ error: 'empty_answer' }, 502);
+      answer = cleanAnswer(answer);
+      if (NEEDS_NOTE.test(answer) && !answer.includes('تغییر کرده باشد')) answer += '\n\n' + DISCLAIMER;
+      return json({ answer, sources: found.map(s => ({ title: s.title, url: s.url })) });
+    } catch { return json({ error: 'service_unavailable' }, 502); }
+  }
+};

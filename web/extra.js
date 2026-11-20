@@ -54,3 +54,29 @@
     window.addEventListener('popstate',function(){if(window.khBack())history.pushState({kh:1},'')});
   }catch(e){}
 })();
+
+// تلاش دوباره برای اینترنت ضعیف (تا ۳ بار، هر بار تا ۳۰ ثانیه صبر)
+(function(){
+  var of=window.fetch;
+  window.fetch=function(u,o){
+    if(typeof u==='string'&&u.indexOf('/api/chat')>-1){
+      var n=0;
+      var go=function(){
+        var c=new AbortController();
+        var t=setTimeout(function(){c.abort()},30000);
+        var opt=Object.assign({},o,{signal:c.signal});
+        return of(u,opt).then(function(r){
+          clearTimeout(t);
+          if(r.status>=500&&n<2){n++;return go()}
+          return r;
+        }).catch(function(e){
+          clearTimeout(t);
+          if(n<2){n++;return go()}
+          throw e;
+        });
+      };
+      return go();
+    }
+    return of.apply(this,arguments);
+  };
+})();

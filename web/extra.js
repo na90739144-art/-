@@ -55,23 +55,33 @@
   }catch(e){}
 })();
 
-// تلاش دوباره برای اینترنت ضعیف (تا ۳ بار، هر بار تا ۳۰ ثانیه صبر)
+// تلاش دوباره + نمایش کد خطا برای عیب‌یابی
 (function(){
   var of=window.fetch;
+  function toast(t){
+    var e=document.getElementById('khDbg');
+    if(!e){e=document.createElement('div');e.id='khDbg';
+      e.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:99999;background:#222;color:#fff;font:12px sans-serif;padding:8px 10px;border-radius:10px;direction:ltr;text-align:left';
+      document.body.appendChild(e);}
+    e.textContent=t;clearTimeout(e._t);e._t=setTimeout(function(){e.remove()},12000);
+  }
   window.fetch=function(u,o){
     if(typeof u==='string'&&u.indexOf('/api/chat')>-1){
       var n=0;
       var go=function(){
         var c=new AbortController();
         var t=setTimeout(function(){c.abort()},30000);
-        var opt=Object.assign({},o,{signal:c.signal});
-        return of(u,opt).then(function(r){
+        return of(u,Object.assign({},o,{signal:c.signal})).then(function(r){
           clearTimeout(t);
-          if(r.status>=500&&n<2){n++;return go()}
+          if(!r.ok){
+            r.clone().json().then(function(j){toast('HTTP '+r.status+' '+((j&&j.error)||''))}).catch(function(){toast('HTTP '+r.status)});
+            if(r.status>=500&&n<2){n++;return go()}
+          }
           return r;
         }).catch(function(e){
           clearTimeout(t);
           if(n<2){n++;return go()}
+          toast('NETWORK '+((e&&e.name)||'error'));
           throw e;
         });
       };
